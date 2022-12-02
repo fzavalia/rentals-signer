@@ -18,11 +18,11 @@ export default function Home() {
       </Head>
 
       <main className={styles.main}>
-        <div style={{ display: "flex", gap: "3rem" }}>
+        <ConnectButton />
+        <div style={{ display: "flex", width: "100%" }}>
           <SignListing />
           <SignOffer />
         </div>
-        <ConnectButton />
       </main>
 
       <footer className={styles.footer}>
@@ -51,7 +51,7 @@ function ConnectButton() {
   const account = hooks.useAccount();
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1rem", alignItems: "center" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "1rem", maxWidth: 300 }}>
       <div style={{ display: "flex", flexDirection: "column" }}>
         <label style={{ fontSize: ".8rem" }}>Chain Id</label>
         <input
@@ -245,7 +245,7 @@ function SignListing() {
   };
 
   return (
-    <div style={{ marginBottom: "2rem" }}>
+    <div style={{ marginBottom: "2rem", flex: 1 }}>
       <h1>Sign Listings</h1>
       <form
         style={{ display: "flex", flexDirection: "column", gap: "1rem", maxWidth: "300px" }}
@@ -510,7 +510,7 @@ function SignOffer() {
   };
 
   return (
-    <div style={{ marginBottom: "2rem" }}>
+    <div style={{ marginBottom: "2rem", flex: 1 }}>
       <h1>Sign Offer</h1>
       <form
         style={{ display: "flex", flexDirection: "column", gap: "1rem", maxWidth: "300px" }}
