@@ -141,7 +141,7 @@ function SignListing() {
 
   const contractAddress = watch("contractAddress");
 
-  const [signError, setSignError] = useState("");
+  const [error, setError] = useState("");
   const [listingTuple, setListingTuple] = useState("");
 
   if (!account || !provider || !chainId) {
@@ -165,7 +165,8 @@ function SignListing() {
     localStorage.setItem("signListingData", JSON.stringify(data));
 
     try {
-      setSignError("");
+      setError("");
+      setListingTuple("");
 
       const signer = provider.getSigner();
 
@@ -226,15 +227,20 @@ function SignListing() {
       );
 
       setListingTuple(`
-      ["${data.signer}","${data.contractAddress}","${data.tokenId}","${data.expiration}",[${data.indexes
-        .split(",")
-        .map((index) => `"${index}"`)}],[${data.pricePerDay.split(",").map((price) => `"${price}"`)}],[${data.maxDays
-        .split(",")
-        .map((day) => `"${day}"`)}],[${data.minDays.split(",").map((day) => `"${day}"`)}],"${
-        data.target
-      }","${signature}"]`);
+      [
+        "${data.signer}",
+        "${data.contractAddress}",
+        "${data.tokenId}",
+        "${data.expiration}",
+        [${data.indexes.split(",").map((index) => `"${index}"`)}],
+        [${data.pricePerDay.split(",").map((price) => `"${price}"`)}],
+        [${data.maxDays.split(",").map((day) => `"${day}"`)}],
+        [${data.minDays.split(",").map((day) => `"${day}"`)}],
+        "${data.target}",
+        "${signature}"
+      ]`);
     } catch (e) {
-      setSignError((e as Error).message);
+      setError((e as Error).message);
     }
   };
 
@@ -324,14 +330,19 @@ function SignListing() {
         <button
           type="button"
           onClick={async () => {
-            const contract = new ethers.Contract(contractAddress, ERC721Abi, provider.getSigner());
-            await contract.setApprovalForAll(rentalsAddress, true);
+            try {
+              setError("");
+              const contract = new ethers.Contract(contractAddress, ERC721Abi, provider.getSigner());
+              await contract.setApprovalForAll(rentalsAddress, true);
+            } catch (e) {
+              setError((e as Error).message);
+            }
           }}
         >
           Approval For All
         </button>
         {listingTuple && <span style={{ fontSize: ".8rem", wordBreak: "break-word" }}>{listingTuple}</span>}
-        {signError && <span style={{ fontSize: ".8rem", color: "red" }}>{signError}</span>}
+        {error && <span style={{ fontSize: ".8rem", color: "red" }}>{error}</span>}
       </form>
     </div>
   );
@@ -373,7 +384,7 @@ function SignOffer() {
     },
   });
 
-  const [signError, setSignError] = useState("");
+  const [error, setError] = useState("");
   const [offerTuple, setOfferTuple] = useState("");
   const [encodedOfferTuple, setEncodedOfferTuple] = useState("");
 
@@ -401,7 +412,9 @@ function SignOffer() {
     localStorage.setItem("signOfferData", JSON.stringify(data));
 
     try {
-      setSignError("");
+      setError("");
+      setOfferTuple("");
+      setEncodedOfferTuple("");
 
       const signer = provider.getSigner();
 
@@ -492,7 +505,7 @@ function SignOffer() {
         )
       );
     } catch (e) {
-      setSignError((e as Error).message);
+      setError((e as Error).message);
     }
   };
 
@@ -588,18 +601,22 @@ function SignOffer() {
         <button
           type="button"
           onClick={async () => {
-            const contract = new ethers.Contract(manaAddress, ERC20Abi, provider.getSigner());
-            await contract.approve(
-              rentalsAddress,
-              "115792089237316195423570985008687907853269984665640564039457584007913129639935"
-            );
+            try {
+              const contract = new ethers.Contract(manaAddress, ERC20Abi, provider.getSigner());
+              await contract.approve(
+                rentalsAddress,
+                "115792089237316195423570985008687907853269984665640564039457584007913129639935"
+              );
+            } catch (e) {
+              setError((e as Error).message);
+            }
           }}
         >
           Approve MANA
         </button>
         {offerTuple && <span style={{ fontSize: ".8rem", wordBreak: "break-word" }}>{offerTuple}</span>}
         {encodedOfferTuple && <span style={{ fontSize: ".8rem", wordBreak: "break-word" }}>{encodedOfferTuple}</span>}
-        {signError && <span style={{ fontSize: ".8rem", color: "red" }}>{signError}</span>}
+        {error && <span style={{ fontSize: ".8rem", color: "red" }}>{error}</span>}
       </form>
     </div>
   );
