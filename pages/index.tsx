@@ -246,7 +246,7 @@ function SignListing() {
 
   return (
     <div style={{ marginBottom: "2rem", flex: 1 }}>
-      <h1>Sign Listings</h1>
+      <h1>Sign Listing</h1>
       <form
         style={{ display: "flex", flexDirection: "column", gap: "1rem", maxWidth: "300px" }}
         onSubmit={handleSubmit(onSubmit)}
