@@ -1,6 +1,12 @@
-import Head from 'next/head'
-import Image from 'next/image'
-import styles from '../styles/Home.module.css'
+import Head from "next/head";
+import Image from "next/image";
+import styles from "../styles/Home.module.css";
+import { hooks, walletConnect } from "../connectors/walletConnect";
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { ethers } from "ethers";
+import ERC721Abi from "../abis/ERC721.json";
+import ERC20Abi from "../abis/ERC20.json";
 
 export default function Home() {
   return (
@@ -12,46 +18,11 @@ export default function Home() {
       </Head>
 
       <main className={styles.main}>
-        <h1 className={styles.title}>
-          Welcome to <a href="https://nextjs.org">Next.js!</a>
-        </h1>
-
-        <p className={styles.description}>
-          Get started by editing{' '}
-          <code className={styles.code}>pages/index.tsx</code>
-        </p>
-
-        <div className={styles.grid}>
-          <a href="https://nextjs.org/docs" className={styles.card}>
-            <h2>Documentation &rarr;</h2>
-            <p>Find in-depth information about Next.js features and API.</p>
-          </a>
-
-          <a href="https://nextjs.org/learn" className={styles.card}>
-            <h2>Learn &rarr;</h2>
-            <p>Learn about Next.js in an interactive course with quizzes!</p>
-          </a>
-
-          <a
-            href="https://github.com/vercel/next.js/tree/canary/examples"
-            className={styles.card}
-          >
-            <h2>Examples &rarr;</h2>
-            <p>Discover and deploy boilerplate example Next.js projects.</p>
-          </a>
-
-          <a
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=default-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-            className={styles.card}
-          >
-            <h2>Deploy &rarr;</h2>
-            <p>
-              Instantly deploy your Next.js site to a public URL with Vercel.
-            </p>
-          </a>
+        <div style={{ display: "flex", gap: "3rem" }}>
+          <SignListing />
+          <SignOffer />
         </div>
+        <ConnectButton />
       </main>
 
       <footer className={styles.footer}>
@@ -60,12 +31,576 @@ export default function Home() {
           target="_blank"
           rel="noopener noreferrer"
         >
-          Powered by{' '}
+          Powered by{" "}
           <span className={styles.logo}>
             <Image src="/vercel.svg" alt="Vercel Logo" width={72} height={16} />
           </span>
         </a>
       </footer>
     </div>
-  )
+  );
+}
+
+function ConnectButton() {
+  const [error, setError] = useState("");
+  const [chainId, setChainId] = useState(1);
+
+  const isActivating = hooks.useIsActivating();
+  const isActive = hooks.useIsActive();
+  const connectedChainId = hooks.useChainId();
+  const account = hooks.useAccount();
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "1rem", alignItems: "center" }}>
+      <div style={{ display: "flex", flexDirection: "column" }}>
+        <label style={{ fontSize: ".8rem" }}>Chain Id</label>
+        <input
+          type="number"
+          value={isActive ? connectedChainId : chainId}
+          disabled={isActive}
+          onChange={(e) => {
+            try {
+              setChainId(Number(e.target.value));
+            } catch (e) {
+              setChainId(1);
+            }
+          }}
+        />
+      </div>
+      {!isActive && (
+        <button
+          disabled={isActivating}
+          onClick={async () => {
+            try {
+              await walletConnect.activate(chainId);
+              setError("");
+            } catch (e) {
+              setError((e as Error).message);
+            }
+          }}
+        >
+          Connect
+        </button>
+      )}
+      {isActive && (
+        <button
+          onClick={async () => {
+            try {
+              await walletConnect.deactivate();
+              setError("");
+            } catch (e) {
+              setError((e as Error).message);
+            }
+          }}
+        >
+          Disconnect
+        </button>
+      )}
+      {isActive && <span>{account}</span>}
+      {error && <span style={{ color: "red" }}>{error}</span>}
+    </div>
+  );
+}
+
+function SignListing() {
+  const account = hooks.useAccount();
+  const provider = hooks.useProvider();
+  const chainId = hooks.useChainId();
+
+  type FormData = {
+    signer: string;
+    contractAddress: string;
+    tokenId: string;
+    expiration: string;
+    indexes: string;
+    pricePerDay: string;
+    maxDays: string;
+    minDays: string;
+    target: string;
+  };
+
+  const {
+    register,
+    handleSubmit,
+    watch,
+    setValue,
+    formState: { errors },
+  } = useForm<FormData>({
+    defaultValues: {
+      signer: "",
+      contractAddress: "",
+      tokenId: "",
+      expiration: "",
+      indexes: "",
+      pricePerDay: "",
+      maxDays: "",
+      minDays: "",
+      target: "",
+    },
+  });
+
+  const contractAddress = watch("contractAddress");
+
+  const [signError, setSignError] = useState("");
+  const [listingTuple, setListingTuple] = useState("");
+
+  if (!account || !provider || !chainId) {
+    return null;
+  }
+
+  let rentalsAddress: string;
+
+  switch (chainId) {
+    case 1:
+      rentalsAddress = "0x3a1469499d0be105d4f77045ca403a5f6dc2f3f5";
+      break;
+    case 5:
+      rentalsAddress = "0x92159c78f0f4523b9c60382bb888f30f10a46b3b";
+      break;
+    default:
+      throw new Error(`Unsupported chain id ${chainId}`);
+  }
+
+  const onSubmit = async (data: FormData) => {
+    localStorage.setItem("signListingData", JSON.stringify(data));
+
+    try {
+      setSignError("");
+
+      const signer = provider.getSigner();
+
+      const signature = await signer._signTypedData(
+        {
+          chainId: chainId,
+          name: "Rentals",
+          verifyingContract: rentalsAddress,
+          version: "1",
+        },
+        {
+          Listing: [
+            {
+              type: "address",
+              name: "signer",
+            },
+            {
+              type: "address",
+              name: "contractAddress",
+            },
+            {
+              type: "uint256",
+              name: "tokenId",
+            },
+            {
+              type: "uint256",
+              name: "expiration",
+            },
+            {
+              type: "uint256[3]",
+              name: "indexes",
+            },
+            {
+              type: "uint256[]",
+              name: "pricePerDay",
+            },
+            {
+              type: "uint256[]",
+              name: "maxDays",
+            },
+            {
+              type: "uint256[]",
+              name: "minDays",
+            },
+            {
+              type: "address",
+              name: "target",
+            },
+          ],
+        },
+        {
+          ...data,
+          indexes: data.indexes.split(","),
+          pricePerDay: data.pricePerDay.split(","),
+          maxDays: data.maxDays.split(","),
+          minDays: data.minDays.split(","),
+        }
+      );
+
+      setListingTuple(`
+      ["${data.signer}","${data.contractAddress}","${data.tokenId}","${data.expiration}",[${data.indexes
+        .split(",")
+        .map((index) => `"${index}"`)}],[${data.pricePerDay.split(",").map((price) => `"${price}"`)}],[${data.maxDays
+        .split(",")
+        .map((day) => `"${day}"`)}],[${data.minDays.split(",").map((day) => `"${day}"`)}],"${
+        data.target
+      }","${signature}"]`);
+    } catch (e) {
+      setSignError((e as Error).message);
+    }
+  };
+
+  return (
+    <div style={{ marginBottom: "2rem" }}>
+      <h1>Sign Listings</h1>
+      <form
+        style={{ display: "flex", flexDirection: "column", gap: "1rem", maxWidth: "300px" }}
+        onSubmit={handleSubmit(onSubmit)}
+      >
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <label style={{ fontSize: ".8rem" }}>{"Signer"}</label>
+          <input {...register("signer", { required: { value: true, message: "Required" } })} />
+          {errors["signer"] && <label style={{ fontSize: ".8rem", color: "red" }}>{errors["signer"]?.message}</label>}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <label style={{ fontSize: ".8rem" }}>{"Contract Address"}</label>
+          <input {...register("contractAddress", { required: { value: true, message: "Required" } })} />
+          {errors["contractAddress"] && (
+            <label style={{ fontSize: ".8rem", color: "red" }}>{errors["contractAddress"]?.message}</label>
+          )}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <label style={{ fontSize: ".8rem" }}>{"Token Id"}</label>
+          <input {...register("tokenId", { required: { value: true, message: "Required" } })} />
+          {errors["tokenId"] && <label style={{ fontSize: ".8rem", color: "red" }}>{errors["tokenId"]?.message}</label>}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <label style={{ fontSize: ".8rem" }}>{"Expiration"}</label>
+          <input {...register("expiration", { required: { value: true, message: "Required" } })} />
+          {errors["expiration"] && (
+            <label style={{ fontSize: ".8rem", color: "red" }}>{errors["expiration"]?.message}</label>
+          )}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <label style={{ fontSize: ".8rem" }}>{"Indexes"}</label>
+          <input {...register("indexes", { required: { value: true, message: "Required" } })} />
+          {errors["indexes"] && <label style={{ fontSize: ".8rem", color: "red" }}>{errors["indexes"]?.message}</label>}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <label style={{ fontSize: ".8rem" }}>{"Price Per Day"}</label>
+          <input {...register("pricePerDay", { required: { value: true, message: "Required" } })} />
+          {errors["pricePerDay"] && (
+            <label style={{ fontSize: ".8rem", color: "red" }}>{errors["pricePerDay"]?.message}</label>
+          )}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <label style={{ fontSize: ".8rem" }}>{"Max Days"}</label>
+          <input {...register("maxDays", { required: { value: true, message: "Required" } })} />
+          {errors["maxDays"] && <label style={{ fontSize: ".8rem", color: "red" }}>{errors["maxDays"]?.message}</label>}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <label style={{ fontSize: ".8rem" }}>{"Min Days"}</label>
+          <input {...register("minDays", { required: { value: true, message: "Required" } })} />
+          {errors["minDays"] && <label style={{ fontSize: ".8rem", color: "red" }}>{errors["minDays"]?.message}</label>}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <label style={{ fontSize: ".8rem" }}>{"Target"}</label>
+          <input {...register("target", { required: { value: true, message: "Required" } })} />
+          {errors["target"] && <label style={{ fontSize: ".8rem", color: "red" }}>{errors["target"]?.message}</label>}
+        </div>
+        <button type="submit" style={{ marginTop: "1rem" }}>
+          Sign
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            const data = localStorage.getItem("signListingData");
+
+            if (data) {
+              const parsed = JSON.parse(data);
+
+              setValue("signer", parsed.signer);
+              setValue("contractAddress", parsed.contractAddress);
+              setValue("tokenId", parsed.tokenId);
+              setValue("expiration", parsed.expiration);
+              setValue("indexes", parsed.indexes);
+              setValue("pricePerDay", parsed.pricePerDay);
+              setValue("maxDays", parsed.maxDays);
+              setValue("minDays", parsed.minDays);
+              setValue("target", parsed.target);
+            }
+          }}
+        >
+          Restore Previous Data
+        </button>
+        <button
+          type="button"
+          onClick={async () => {
+            const contract = new ethers.Contract(contractAddress, ERC721Abi, provider.getSigner());
+            await contract.setApprovalForAll(rentalsAddress, true);
+          }}
+        >
+          Approval For All
+        </button>
+        {listingTuple && <span style={{ fontSize: ".8rem", wordBreak: "break-word" }}>{listingTuple}</span>}
+        {signError && <span style={{ fontSize: ".8rem", color: "red" }}>{signError}</span>}
+      </form>
+    </div>
+  );
+}
+
+function SignOffer() {
+  const account = hooks.useAccount();
+  const provider = hooks.useProvider();
+  const chainId = hooks.useChainId();
+
+  type FormData = {
+    signer: string;
+    contractAddress: string;
+    tokenId: string;
+    expiration: string;
+    indexes: string;
+    pricePerDay: string;
+    rentalDays: string;
+    operator: string;
+    fingerprint: string;
+  };
+
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    formState: { errors },
+  } = useForm<FormData>({
+    defaultValues: {
+      signer: "",
+      contractAddress: "",
+      tokenId: "",
+      expiration: "",
+      indexes: "",
+      pricePerDay: "",
+      rentalDays: "",
+      operator: "",
+      fingerprint: "",
+    },
+  });
+
+  const [signError, setSignError] = useState("");
+  const [offerTuple, setOfferTuple] = useState("");
+  const [encodedOfferTuple, setEncodedOfferTuple] = useState("");
+
+  if (!account || !provider || !chainId) {
+    return null;
+  }
+
+  let rentalsAddress: string;
+  let manaAddress: string;
+
+  switch (chainId) {
+    case 1:
+      rentalsAddress = "0x3a1469499d0be105d4f77045ca403a5f6dc2f3f5";
+      manaAddress = "0x0f5d2fb29fb7d3cfee444a200298f468908cc942";
+      break;
+    case 5:
+      rentalsAddress = "0x92159c78f0f4523b9c60382bb888f30f10a46b3b";
+      manaAddress = "0xe7fDae84ACaba2A5Ba817B6E6D8A2d415DBFEdbe";
+      break;
+    default:
+      throw new Error(`Unsupported chain id ${chainId}`);
+  }
+
+  const onSubmit = async (data: FormData) => {
+    localStorage.setItem("signOfferData", JSON.stringify(data));
+
+    try {
+      setSignError("");
+
+      const signer = provider.getSigner();
+
+      const signature = await signer._signTypedData(
+        {
+          chainId: chainId,
+          name: "Rentals",
+          verifyingContract: rentalsAddress,
+          version: "1",
+        },
+        {
+          Offer: [
+            {
+              type: "address",
+              name: "signer",
+            },
+            {
+              type: "address",
+              name: "contractAddress",
+            },
+            {
+              type: "uint256",
+              name: "tokenId",
+            },
+            {
+              type: "uint256",
+              name: "expiration",
+            },
+            {
+              type: "uint256[3]",
+              name: "indexes",
+            },
+            {
+              type: "uint256",
+              name: "pricePerDay",
+            },
+            {
+              type: "uint256",
+              name: "rentalDays",
+            },
+            {
+              type: "address",
+              name: "operator",
+            },
+            {
+              type: "bytes32",
+              name: "fingerprint",
+            },
+          ],
+        },
+        {
+          ...data,
+          indexes: data.indexes.split(","),
+        }
+      );
+
+      setOfferTuple(`
+      [
+        "${data.signer}",
+        "${data.contractAddress}",
+        "${data.tokenId}",
+        "${data.expiration}",
+        [${data.indexes.split(",").map((index) => `"${index}"`)}],
+        "${data.pricePerDay}",
+        "${data.rentalDays}",
+        "${data.operator}",
+        "${data.fingerprint}",
+        "${signature}"
+      ]`);
+
+      setEncodedOfferTuple(
+        ethers.utils.defaultAbiCoder.encode(
+          ["tuple(address,address,uint256,uint256,uint256[3],uint256,uint256,address,bytes32,bytes)"],
+          [
+            [
+              data.signer,
+              data.contractAddress,
+              data.tokenId,
+              data.expiration,
+              data.indexes.split(","),
+              data.pricePerDay,
+              data.rentalDays,
+              data.operator,
+              data.fingerprint,
+              signature,
+            ],
+          ]
+        )
+      );
+    } catch (e) {
+      setSignError((e as Error).message);
+    }
+  };
+
+  return (
+    <div style={{ marginBottom: "2rem" }}>
+      <h1>Sign Offer</h1>
+      <form
+        style={{ display: "flex", flexDirection: "column", gap: "1rem", maxWidth: "300px" }}
+        onSubmit={handleSubmit(onSubmit)}
+      >
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <label style={{ fontSize: ".8rem" }}>{"Signer"}</label>
+          <input {...register("signer", { required: { value: true, message: "Required" } })} />
+          {errors["signer"] && <label style={{ fontSize: ".8rem", color: "red" }}>{errors["signer"]?.message}</label>}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <label style={{ fontSize: ".8rem" }}>{"Contract Address"}</label>
+          <input {...register("contractAddress", { required: { value: true, message: "Required" } })} />
+          {errors["contractAddress"] && (
+            <label style={{ fontSize: ".8rem", color: "red" }}>{errors["contractAddress"]?.message}</label>
+          )}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <label style={{ fontSize: ".8rem" }}>{"Token Id"}</label>
+          <input {...register("tokenId", { required: { value: true, message: "Required" } })} />
+          {errors["tokenId"] && <label style={{ fontSize: ".8rem", color: "red" }}>{errors["tokenId"]?.message}</label>}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <label style={{ fontSize: ".8rem" }}>{"Expiration"}</label>
+          <input {...register("expiration", { required: { value: true, message: "Required" } })} />
+          {errors["expiration"] && (
+            <label style={{ fontSize: ".8rem", color: "red" }}>{errors["expiration"]?.message}</label>
+          )}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <label style={{ fontSize: ".8rem" }}>{"Indexes"}</label>
+          <input {...register("indexes", { required: { value: true, message: "Required" } })} />
+          {errors["indexes"] && <label style={{ fontSize: ".8rem", color: "red" }}>{errors["indexes"]?.message}</label>}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <label style={{ fontSize: ".8rem" }}>{"Price Per Day"}</label>
+          <input {...register("pricePerDay", { required: { value: true, message: "Required" } })} />
+          {errors["pricePerDay"] && (
+            <label style={{ fontSize: ".8rem", color: "red" }}>{errors["pricePerDay"]?.message}</label>
+          )}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <label style={{ fontSize: ".8rem" }}>{"Rental Days"}</label>
+          <input {...register("rentalDays", { required: { value: true, message: "Required" } })} />
+          {errors["rentalDays"] && (
+            <label style={{ fontSize: ".8rem", color: "red" }}>{errors["rentalDays"]?.message}</label>
+          )}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <label style={{ fontSize: ".8rem" }}>{"Operator"}</label>
+          <input {...register("operator", { required: { value: true, message: "Required" } })} />
+          {errors["operator"] && (
+            <label style={{ fontSize: ".8rem", color: "red" }}>{errors["operator"]?.message}</label>
+          )}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <label style={{ fontSize: ".8rem" }}>{"Fingerprint"}</label>
+          <input {...register("fingerprint", { required: { value: true, message: "Required" } })} />
+          {errors["fingerprint"] && (
+            <label style={{ fontSize: ".8rem", color: "red" }}>{errors["fingerprint"]?.message}</label>
+          )}
+        </div>
+        <button type="submit" style={{ marginTop: "1rem" }}>
+          Sign
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            const data = localStorage.getItem("signOfferData");
+
+            if (data) {
+              const parsed = JSON.parse(data);
+
+              setValue("signer", parsed.signer);
+              setValue("contractAddress", parsed.contractAddress);
+              setValue("tokenId", parsed.tokenId);
+              setValue("expiration", parsed.expiration);
+              setValue("indexes", parsed.indexes);
+              setValue("pricePerDay", parsed.pricePerDay);
+              setValue("rentalDays", parsed.rentalDays);
+              setValue("operator", parsed.operator);
+              setValue("fingerprint", parsed.fingerprint);
+            }
+          }}
+        >
+          Restore Previous Data
+        </button>
+        <button
+          type="button"
+          onClick={async () => {
+            const contract = new ethers.Contract(manaAddress, ERC20Abi, provider.getSigner());
+            await contract.approve(
+              rentalsAddress,
+              "115792089237316195423570985008687907853269984665640564039457584007913129639935"
+            );
+          }}
+        >
+          Approve MANA
+        </button>
+        {offerTuple && <span style={{ fontSize: ".8rem", wordBreak: "break-word" }}>{offerTuple}</span>}
+        {encodedOfferTuple && <span style={{ fontSize: ".8rem", wordBreak: "break-word" }}>{encodedOfferTuple}</span>}
+        {signError && <span style={{ fontSize: ".8rem", color: "red" }}>{signError}</span>}
+      </form>
+    </div>
+  );
 }
