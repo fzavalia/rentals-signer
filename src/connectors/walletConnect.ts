@@ -7,8 +7,8 @@ export const [walletConnect, hooks] = initializeConnector<WalletConnect>(
       actions,
       options: {
         rpc: {
-          1: "https://rpc.decentraland.org/mainnet",
-          5: "https://rpc.decentraland.org/goerli",
+          1: "https://rpc.ankr.com/eth",
+          5: "https://rpc.ankr.com/eth_goerli",
         },
       },
     })
